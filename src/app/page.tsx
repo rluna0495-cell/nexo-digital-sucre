@@ -1,69 +1,141 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState, useEffect } from 'react';
+import { getDatabase, getVentaDate } from './lib/store';
+import { Producto, Venta } from './lib/types';
+import { formatMoney } from './lib/format';
+import { Package, ShoppingCart, Users, BarChart3, TrendingUp, AlertTriangle, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+
+export default function HomeDashboard() {
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [ventas, setVentas] = useState<Venta[]>([]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const database = getDatabase();
+      setProductos(database.productos);
+      setVentas(database.ventas);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const totalVentas = ventas.reduce((acc, venta) => (
+    acc + venta.articulos.reduce((saleTotal, item) => {
+      const price = Number(item.price);
+      const quantity = Number(item.quantity);
+      return saleTotal + (Number.isFinite(price) && Number.isFinite(quantity) ? price * quantity : 0);
+    }, 0)
+  ), 0);
+  const totalProductosCount = productos.length;
+  const stockCriticoCount = productos.filter(p => p.stockActual <= 5).length;
+  const ultimasVentas = [...ventas]
+    .sort((a, b) => (getVentaDate(b)?.getTime() ?? 0) - (getVentaDate(a)?.getTime() ?? 0))
+    .slice(0, 5);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="flex-1 flex flex-col overflow-y-auto bg-[#0b0f19]">
+      <header className="bg-[#131b2e] border-b border-slate-800 px-8 py-5 flex items-center justify-between shadow-lg">
+        <div>
+          <span className="text-xs font-semibold text-emerald-400 uppercase tracking-widest">NEXO DIGITAL SUCRE · ERP CORPORATIVO</span>
+          <h2 className="text-xl font-black text-white mt-0.5">Panel de Control General</h2>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="flex items-center gap-3">
+          <span className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
+            🟢 Sistema Operativo
+          </span>
         </div>
-      </main>
-    </div>
+      </header>
+
+      <div className="p-8 max-w-7xl mx-auto w-full space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-[#131b2e] border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute right-4 top-4 p-3 bg-emerald-500/10 rounded-xl text-emerald-400"><TrendingUp className="w-6 h-6" /></div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ventas Totales</p>
+              <p className="text-3xl font-black text-white mt-2">${formatMoney(totalVentas)}</p>
+            </div>
+            <p className="text-xs text-emerald-400 font-semibold mt-4">{ventas.length} transacciones registradas en caja</p>
+          </div>
+
+          <div className="bg-[#131b2e] border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute right-4 top-4 p-3 bg-blue-500/10 rounded-xl text-blue-400"><Package className="w-6 h-6" /></div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Catálogo Activo</p>
+              <p className="text-3xl font-black text-white mt-2">{totalProductosCount}</p>
+            </div>
+            <p className="text-xs text-blue-400 font-semibold mt-4">Artículos en inventario general</p>
+          </div>
+
+          <div className="bg-[#131b2e] border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute right-4 top-4 p-3 bg-amber-500/10 rounded-xl text-amber-400"><AlertTriangle className="w-6 h-6" /></div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Alertas de Stock</p>
+              <p className={`text-3xl font-black mt-2 ${stockCriticoCount > 0 ? 'text-amber-400' : 'text-white'}`}>{stockCriticoCount}</p>
+            </div>
+            <p className="text-xs text-slate-400 font-semibold mt-4">Productos con stock crítico</p>
+          </div>
+        </div>
+
+        <div className="bg-[#131b2e] border border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
+          <h3 className="text-sm font-bold text-white uppercase tracking-wider">Accesos Directos a Módulos</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <Link href="/ventas" className="p-4 bg-[#0b0f19] hover:bg-slate-800/80 border border-slate-800 rounded-xl transition flex flex-col items-center text-center gap-2 group">
+              <ShoppingCart className="w-6 h-6 text-emerald-400 group-hover:scale-110 transition" />
+              <span className="text-xs font-bold text-slate-200">Punto de Venta POS</span>
+            </Link>
+            <Link href="/productos" className="p-4 bg-[#0b0f19] hover:bg-slate-800/80 border border-slate-800 rounded-xl transition flex flex-col items-center text-center gap-2 group">
+              <Package className="w-6 h-6 text-blue-400 group-hover:scale-110 transition" />
+              <span className="text-xs font-bold text-slate-200">Inventario y Precios</span>
+            </Link>
+            <Link href="/clientes" className="p-4 bg-[#0b0f19] hover:bg-slate-800/80 border border-slate-800 rounded-xl transition flex flex-col items-center text-center gap-2 group">
+              <Users className="w-6 h-6 text-purple-400 group-hover:scale-110 transition" />
+              <span className="text-xs font-bold text-slate-200">Directorio Clientes</span>
+            </Link>
+            <Link href="/reportes" className="p-4 bg-[#0b0f19] hover:bg-slate-800/80 border border-slate-800 rounded-xl transition flex flex-col items-center text-center gap-2 group">
+              <BarChart3 className="w-6 h-6 text-amber-400 group-hover:scale-110 transition" />
+              <span className="text-xs font-bold text-slate-200">Informes y PDF/Excel</span>
+            </Link>
+          </div>
+        </div>
+
+        <div className="bg-[#131b2e] border border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-white text-base">Últimas Transacciones Registradas</h3>
+            <Link href="/reportes" className="text-xs font-semibold text-emerald-400 hover:underline flex items-center gap-1">
+              Ver reporte completo <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase">
+                  <th className="py-3 px-4">Recibo</th>
+                  <th className="py-3 px-4">Cliente</th>
+                  <th className="py-3 px-4">Método de Pago</th>
+                  <th className="py-3 px-4">Fecha / Hora</th>
+                  <th className="py-3 px-4 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {ultimasVentas.length === 0 ? (
+                  <tr><td colSpan={5} className="py-12 text-center text-slate-500">No hay transacciones registradas todavía.</td></tr>
+                ) : (
+                  ultimasVentas.map(v => (
+                    <tr key={v.id} className="hover:bg-slate-800/30 transition">
+                      <td className="py-3.5 px-4 font-mono text-xs text-slate-300 font-semibold">{v.numeroFactura || v.id}</td>
+                      <td className="py-3.5 px-4 font-semibold text-white">{v.clienteNombre || v.cliente || 'Cliente General'}</td>
+                      <td className="py-3.5 px-4"><span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20">{v.metodoPago}</span></td>
+                      <td className="py-3.5 px-4 text-xs text-slate-400">{v.fecha}</td>
+                      <td className="py-3.5 px-4 text-right font-black text-emerald-400">${formatMoney(v.total)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
   );
 }
