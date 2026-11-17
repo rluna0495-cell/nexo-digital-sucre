@@ -25,10 +25,7 @@ const initialDatabase: Database = {
 };
 
 // ============================================================
-// SYNC A SUPABASE - CORREGIDO A TUS TABLAS REALES
-// products: id uuid, name, price, cost, stock, category, created_at
-// customers: id uuid, name, phone, email, document, city, created_at
-// sales: id uuid, total, profit, items jsonb, customer_id uuid, payment_method, created_at
+// SYNC A SUPABASE - CORREGIDO A TUS TABLAS Y COLUMNAS REALES
 // ============================================================
 
 async function syncProductoToSupabase(p: Producto) {
@@ -72,26 +69,38 @@ async function syncVentaToSupabase(v: Venta) {
       const costo = prod ? prod.precioCompra : 0;
       profit += (a.price - costo) * a.quantity;
     });
-    const { error } = await supabase.from('sales').insert({
+
+    const esUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.clienteId || '');
+
+    const payload = {
       total: v.total,
-      profit: profit,
-      items: v.articulos.map(a => ({
+      beneficio: profit,
+      elementos: v.articulos.map(a => ({
         qty: a.quantity,
         name: a.nombre,
         price: a.price
       })),
-      customer_id: null,
-      payment_method: v.metodoPago,
-    });
-    if (error) console.error('Error sync venta:', error.message);
-    else console.log('Venta guardada en Supabase ✅');
-  } catch (e) {
-    console.error('Error sync venta:', e);
+      ID_cliente: esUUID ? v.clienteId : null,
+      método_de_pago: v.metodoPago.toLowerCase(),
+      creado_en: v.fechaISO || new Date().toISOString()
+    };
+
+    const { data, error } = await supabase.from('ventas').insert([payload]).select();
+
+    if (error) {
+      console.error('Error detallado de Supabase al sincronizar venta:', error);
+      alert('Error de Supabase al guardar venta: ' + error.message);
+    } else {
+      console.log('¡Venta guardada en Supabase con éxito! ✅', data);
+    }
+  } catch (e: any) {
+    console.error('Excepción crítica al sincronizar venta:', e);
+    alert('Excepción al conectar con Supabase: ' + (e.message || e));
   }
 }
 
 // ============================================================
-// DE AQUÍ PARA ABAJO ES TU CÓDIGO ORIGINAL
+// LÓGICA DE BASE DE DATOS LOCAL Y NORMALIZACIÓN
 // ============================================================
 
 function isRecord(value: unknown): value is Record<string, unknown> {
