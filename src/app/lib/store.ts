@@ -1,4 +1,5 @@
 import { ArticuloVenta, Cliente, Producto, Venta } from './types';
+import { supabase } from './supabase';
 
 interface Database {
   productos: Producto[];
@@ -23,6 +24,76 @@ const initialDatabase: Database = {
   ventas: []
 };
 
+// ============================================================
+// SYNC A SUPABASE - CORREGIDO A TUS TABLAS REALES
+// products: id uuid, name, price, cost, stock, category, created_at
+// customers: id uuid, name, phone, email, document, city, created_at
+// sales: id uuid, total, profit, items jsonb, customer_id uuid, payment_method, created_at
+// ============================================================
+
+async function syncProductoToSupabase(p: Producto) {
+  try {
+    const { error } = await supabase.from('products').insert({
+      name: p.nombre,
+      price: p.precioVenta,
+      cost: p.precioCompra,
+      stock: Math.round(p.stockActual),
+      category: p.categoria || 'General',
+    });
+    if (error) console.error('Error sync producto:', error.message);
+    else console.log('Producto guardado en Supabase ✅', p.nombre);
+  } catch (e) {
+    console.error('Error sync producto:', e);
+  }
+}
+
+async function syncClienteToSupabase(c: Cliente) {
+  try {
+    const { error } = await supabase.from('customers').insert({
+      name: c.nombre,
+      phone: c.telefono || '',
+      email: c.correo || '',
+      document: c.nit || '',
+      city: c.direccion || 'Sincelejo',
+    });
+    if (error) console.error('Error sync cliente:', error.message);
+    else console.log('Cliente guardado en Supabase ✅', c.nombre);
+  } catch (e) {
+    console.error('Error sync cliente:', e);
+  }
+}
+
+async function syncVentaToSupabase(v: Venta) {
+  try {
+    const dbLocal = getDatabase();
+    let profit = 0;
+    v.articulos.forEach(a => {
+      const prod = dbLocal.productos.find(p => p.id === a.id || p.nombre === a.nombre);
+      const costo = prod ? prod.precioCompra : 0;
+      profit += (a.price - costo) * a.quantity;
+    });
+    const { error } = await supabase.from('sales').insert({
+      total: v.total,
+      profit: profit,
+      items: v.articulos.map(a => ({
+        qty: a.quantity,
+        name: a.nombre,
+        price: a.price
+      })),
+      customer_id: null,
+      payment_method: v.metodoPago,
+    });
+    if (error) console.error('Error sync venta:', error.message);
+    else console.log('Venta guardada en Supabase ✅');
+  } catch (e) {
+    console.error('Error sync venta:', e);
+  }
+}
+
+// ============================================================
+// DE AQUÍ PARA ABAJO ES TU CÓDIGO ORIGINAL
+// ============================================================
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -42,13 +113,11 @@ function numberValue(value: unknown, fallback = 0): number {
   if (typeof value !== 'string') {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   }
-
   const cleaned = value.trim().replace(/[^\d.,-]/g, '');
   if (!cleaned) return fallback;
   const lastComma = cleaned.lastIndexOf(',');
   const lastDot = cleaned.lastIndexOf('.');
   let normalized = cleaned;
-
   if (lastComma !== -1 && lastDot !== -1) {
     const decimalSeparator = lastComma > lastDot ? ',' : '.';
     const thousandSeparator = decimalSeparator === ',' ? '.' : ',';
@@ -60,7 +129,6 @@ function numberValue(value: unknown, fallback = 0): number {
   } else if (lastDot !== -1 && !/\.\d{1,2}$/.test(cleaned)) {
     normalized = cleaned.replace(/\./g, '');
   }
-
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -71,7 +139,6 @@ function normalizeProducto(value: unknown, index: number): Producto | null {
   const isProduct = ['sku', 'SKU', 'codigo', 'codigoBarras', 'barcode', 'barcodeValue', 'precioCompra', 'costo', 'precioVenta', 'stockActual', 'stock']
     .some(key => value[key] !== undefined);
   if (!nombre || !isProduct) return null;
-
   const precioCompra = numberValue(firstValue(value, ['precioCompra', 'costo', 'cost']));
   const precioVenta = numberValue(firstValue(value, ['precioVenta', 'precio', 'price']));
   const margen = firstValue(value, ['margen', 'margin']);
@@ -137,7 +204,6 @@ function normalizeVenta(value: unknown, index: number): Venta | null {
   const rawArticles = firstValue(value, ['articulos', 'items', 'productos']);
   const total = firstValue(value, ['total', 'monto', 'amount']);
   if (!Array.isArray(rawArticles) || total === undefined) return null;
-
   const id = stringValue(firstValue(value, ['id', 'ventaId', 'uuid']), `venta-${index + 1}`);
   const articulos = rawArticles
     .map(normalizeArticulo)
@@ -238,22 +304,18 @@ function addLegacyArray(
 
 function migrateLegacyStorage(): void {
   if (typeof window === 'undefined' || storageInitialized) return;
-
   const products = readCanonicalArray(STORAGE_KEYS.productos, normalizeProducto);
   const clients = readCanonicalArray(STORAGE_KEYS.clientes, normalizeCliente);
   const sales = readCanonicalArray(STORAGE_KEYS.ventas, normalizeVenta);
   const legacyKeysToRemove: string[] = [];
-
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
     if (!key || CANONICAL_STORAGE_KEYS.has(key)) continue;
     if (!/nexo_digital_sucre_db|venta|sale|transaction|producto|product|cliente|customer|database|(^|[_-])db($|[_-])|(^|[_-])pos($|[_-])/i.test(key)) continue;
-
     const legacy = parseStorageValue(key);
     if (legacy === null) continue;
     const before = products.length + clients.length + sales.length;
     let recognized = false;
-
     if (key === LEGACY_DATABASE_KEY && isRecord(legacy)) {
       recognized = addLegacyArray(legacy.productos ?? legacy.products, products, clients, sales)
         || recognized;
@@ -272,12 +334,10 @@ function migrateLegacyStorage(): void {
           || recognized;
       }
     }
-
     if (recognized || products.length + clients.length + sales.length > before) {
       legacyKeysToRemove.push(key);
     }
   }
-
   const mergedProducts = mergeUnique([...products, ...initialDatabase.productos], item =>
     item.sku ? `sku:${item.sku.toLowerCase()}` : `id:${item.id}`);
   const mergedClients = mergeUnique(
@@ -286,7 +346,6 @@ function migrateLegacyStorage(): void {
   );
   const mergedSales = normalizeSalesUnits(mergeUnique(sales, item =>
     item.numeroFactura ? `factura:${item.numeroFactura}` : `id:${item.id}`), mergedProducts);
-
   localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(mergedProducts));
   localStorage.setItem(STORAGE_KEYS.clientes, JSON.stringify(mergedClients));
   localStorage.setItem(STORAGE_KEYS.ventas, JSON.stringify(mergedSales));
@@ -371,18 +430,15 @@ export function restoreBackupJson(backupJson: string): void {
     console.error('No se pudo leer la copia de seguridad JSON.', error);
     throw new Error('El archivo no contiene un JSON válido.');
   }
-
   if (!isRecord(parsed) || !isRecord(parsed.data)) {
     throw new Error('La copia de seguridad no tiene el formato esperado.');
   }
-
   const rawProducts = parsed.data.productos;
   const rawClients = parsed.data.clientes;
   const rawSales = parsed.data.ventas;
   if (!Array.isArray(rawProducts) || !Array.isArray(rawClients) || !Array.isArray(rawSales)) {
     throw new Error('La copia debe incluir productos, clientes y ventas.');
   }
-
   const restoredProducts = normalizeArray(rawProducts, normalizeProducto);
   const restoredClients = normalizeArray(rawClients, normalizeCliente);
   const restoredSales = normalizeArray(rawSales, normalizeVenta);
@@ -406,7 +462,6 @@ export function restoreBackupJson(backupJson: string): void {
 
 export function clearAllAppData(): void {
   if (typeof window === 'undefined') return;
-
   const keysToRemove: string[] = [];
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
@@ -418,7 +473,6 @@ export function clearAllAppData(): void {
       keysToRemove.push(key);
     }
   }
-
   keysToRemove.forEach(key => localStorage.removeItem(key));
   storageInitialized = false;
 }
@@ -446,7 +500,6 @@ export function saveProducto(productoData: Omit<Producto, 'id' | 'margen'>): Pro
   if (db.productos.some(product => product.sku.trim().toLocaleLowerCase() === normalizedSku)) {
     throw new Error('Este código ya existe');
   }
-
   const margen = productoData.precioCompra > 0
     ? Number((((productoData.precioVenta - productoData.precioCompra) / productoData.precioCompra) * 100).toFixed(1))
     : 0;
@@ -458,9 +511,9 @@ export function saveProducto(productoData: Omit<Producto, 'id' | 'margen'>): Pro
     id: Date.now().toString(),
     margen,
   };
-
   db.productos.push(newProducto);
   saveDatabase(db);
+  syncProductoToSupabase(newProducto);
   return newProducto;
 }
 
@@ -476,6 +529,7 @@ export function saveCliente(clienteData: Omit<Cliente, 'id'>): Cliente {
   };
   db.clientes.push(newCliente);
   saveDatabase(db);
+  syncClienteToSupabase(newCliente);
   return newCliente;
 }
 
@@ -487,7 +541,6 @@ export function deleteVenta(ventaId: string): boolean {
   const db = getDatabase();
   const ventaIndex = db.ventas.findIndex(venta => venta.id === ventaId);
   if (ventaIndex === -1) return false;
-
   const [venta] = db.ventas.splice(ventaIndex, 1);
   venta.articulos.forEach(articulo => {
     const producto = findProductForArticle(db.productos, articulo);
@@ -495,7 +548,6 @@ export function deleteVenta(ventaId: string): boolean {
       producto.stockActual = numberValue(producto.stockActual) + numberValue(articulo.quantity);
     }
   });
-
   saveDatabase(db);
   return true;
 }
@@ -506,7 +558,6 @@ export function getVentaDate(venta: Venta): Date | null {
     const parsedISO = new Date(isoDate);
     if (!Number.isNaN(parsedISO.getTime())) return parsedISO;
   }
-
   const localizedDate = venta.fecha || '';
   const match = localizedDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:,\s*(\d{1,2}):(\d{2})(?:\s*([ap])\.?\s*m\.?)?)?/i);
   if (match) {
@@ -518,7 +569,6 @@ export function getVentaDate(venta: Venta): Date | null {
     const parsedLocalized = new Date(year, Number(match[2]) - 1, Number(match[1]), hour, Number(match[5] ?? 0));
     if (!Number.isNaN(parsedLocalized.getTime())) return parsedLocalized;
   }
-
   const parsed = new Date(localizedDate);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
@@ -545,14 +595,12 @@ export function saveVenta(ventaData: {
     };
   });
   const subtotal = articulos.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
   articulos.forEach(itemVenta => {
     const producto = findProductForArticle(db.productos, itemVenta);
     if (producto) {
       producto.stockActual = Math.max(0, numberValue(producto.stockActual) - itemVenta.quantity);
     }
   });
-
   const usedInvoiceNumbers = new Set(db.ventas.map(venta => venta.numeroFactura));
   let invoiceSequence = db.ventas.length + 1;
   let numeroFactura = `FAC-${invoiceSequence.toString().padStart(4, '0')}`;
@@ -560,7 +608,6 @@ export function saveVenta(ventaData: {
     invoiceSequence += 1;
     numeroFactura = `FAC-${invoiceSequence.toString().padStart(4, '0')}`;
   }
-
   const now = new Date();
   const nuevaVenta: Venta = {
     id: Date.now().toString(),
@@ -580,8 +627,8 @@ export function saveVenta(ventaData: {
     fecha: now.toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }),
     fechaISO: now.toISOString(),
   };
-
   db.ventas.unshift(nuevaVenta);
   saveDatabase(db);
+  syncVentaToSupabase(nuevaVenta);
   return nuevaVenta;
 }
