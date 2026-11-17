@@ -25,7 +25,7 @@ const initialDatabase: Database = {
 };
 
 // ============================================================
-// SYNC A SUPABASE - CORREGIDO A TUS TABLAS Y COLUMNAS REALES
+// SYNC A SUPABASE - BLINDADO Y DIAGNOSTICADO
 // ============================================================
 
 async function syncProductoToSupabase(p: Producto) {
@@ -38,7 +38,6 @@ async function syncProductoToSupabase(p: Producto) {
       category: p.categoria || 'General',
     });
     if (error) console.error('Error sync producto:', error.message);
-    else console.log('Producto guardado en Supabase ✅', p.nombre);
   } catch (e) {
     console.error('Error sync producto:', e);
   }
@@ -54,7 +53,6 @@ async function syncClienteToSupabase(c: Cliente) {
       city: c.direccion || 'Sincelejo',
     });
     if (error) console.error('Error sync cliente:', error.message);
-    else console.log('Cliente guardado en Supabase ✅', c.nombre);
   } catch (e) {
     console.error('Error sync cliente:', e);
   }
@@ -85,17 +83,19 @@ async function syncVentaToSupabase(v: Venta) {
       creado_en: v.fechaISO || new Date().toISOString()
     };
 
+    console.log("Enviando venta a Supabase...", payload);
+
     const { data, error } = await supabase.from('ventas').insert([payload]).select();
 
     if (error) {
-      console.error('Error detallado de Supabase al sincronizar venta:', error);
-      alert('Error de Supabase al guardar venta: ' + error.message);
+      console.error('Error detallado de Supabase:', error);
+      alert('⚠️ ERROR DE SUPABASE: ' + error.message);
     } else {
       console.log('¡Venta guardada en Supabase con éxito! ✅', data);
     }
   } catch (e: any) {
     console.error('Excepción crítica al sincronizar venta:', e);
-    alert('Excepción al conectar con Supabase: ' + (e.message || e));
+    alert('❌ Excepción al conectar con Supabase: ' + (e.message || e));
   }
 }
 
